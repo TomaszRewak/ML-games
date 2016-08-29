@@ -1,0 +1,79 @@
+﻿<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>ML games</title>
+	<meta name="description" content="Machine learning games. Use combination of genetic algorithms and neural networks to control the behaviour of in-game objects.">
+	<link href="https://fonts.googleapis.com/css?family=Dosis" rel="stylesheet">
+	<link href="./site.css" rel="stylesheet" />
+	<script src="https://code.jquery.com/jquery-3.1.0.min.js"></script>
+	<script src="https://code.jquery.com/ui/1.12.0/jquery-ui.min.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.2.5/ace.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/handlebars.js/4.0.5/handlebars.min.js"></script>
+	<script src="app.js"></script>
+</head>
+<body>
+	<div class="scroller-wrapper">
+		<div id="settings">
+			<div id="nn-settings">
+				<div class="settings-group-title">Neural network settings</div>
+			</div>
+			<div id="ga-settings">
+				<div class="settings-group-title">Genetic algorithm settings</div>
+			</div>
+			<div id="race-settings">
+				<div class="settings-group-title">Game settings</div>
+			</div>
+			<div class="separator"></div>
+			<div id="me">
+				<div id="my-name">By Tomasz Rewak</div>
+				<img id="my-image" height="100" src="./images/Ja.jpg" alt="Me" />
+				<a id="linkedId" target="_blank" href="https://www.linkedin.com/in/tomaszrewak">LinkedIn</a>
+				<div id="see-also">See also: <a href="http://trepl.xyz">trepl.xyz</a></div>
+			</div>
+		</div>
+		<div id="game-canvas-holder">
+			<canvas id="game-canvas">
+				Your browser does not support the HTML5 canvas tag.
+			</canvas>
+			<div id="quick-menu">
+				<div id="generation">Generation: <span id="generation-number">0</span></div>
+				<div id="start-button" class="button">Restart</div>
+				<div id="restart-message">Restart to applly changes</div>
+				<div id="skip-button" class="button">End race</div>
+			</div>
+		</div>
+	</div>
+
+	<script id="setting-template" type="text/x-handlebars-template">
+		<div class="setting">
+			<div class="setting-header">
+				<div class="setting-title">{{title}}</div>
+				<div class="reset-button button">Reset</div>
+			</div>
+			<div class="setting-code">
+				{{#if firstLine}}
+				<div class="setting-first-code-line"></div>
+				{{/if}}
+				<div class="code-editor"></div>
+				{{#if lastLine}}
+				<div class="setting-last-code-line"></div>
+				{{/if}}
+			</div>
+		</div>
+	</script>
+
+	<script>
+		(function (i, s, o, g, r, a, m) {
+			i['GoogleAnalyticsObject'] = r; i[r] = i[r] || function () {
+				(i[r].q = i[r].q || []).push(arguments)
+			}, i[r].l = 1 * new Date(); a = s.createElement(o),
+			m = s.getElementsByTagName(o)[0]; a.async = 1; a.src = g; m.parentNode.insertBefore(a, m)
+		})(window, document, 'script', 'https://www.google-analytics.com/analytics.js', 'ga');
+
+		ga('create', 'UA-83326438-1', 'auto');
+		ga('send', 'pageview');
+	</script>
+</body>
+</html>

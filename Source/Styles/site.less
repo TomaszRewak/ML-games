@@ -1,0 +1,181 @@
+﻿@menu-dark: hsla(70,8%,10%,1);
+
+html, body {
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	font-family: "Dosis";
+}
+
+.scroller-wrapper {
+	height: 100%;
+	width: 100%;
+	overflow: hidden;
+	position: relative;
+}
+
+#game-canvas-holder {
+	position: absolute;
+	z-index: 1000;
+	top: 0;
+	width: 90vw;
+	height: 100%;
+	transition-duration: 0.5s;
+	box-shadow: -10px 0px 5px 0px rgba(0,0,0,0.75);
+	left: 10vw;
+}
+
+#game-canvas {
+	width: 100%;
+	height: 100%;
+	background-color: hsl(104, 15%, 50%);
+}
+
+#settings {
+	width: 90vw;
+	height: 100vh;
+	background-color: @menu-dark;
+	overflow-y: scroll;
+}
+
+#quick-menu {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	position: absolute;
+	right: 20px;
+	top: 20px;
+	transition-duration: 0.2s;
+	padding: 10px;
+	border-radius: 5px;
+	color: @menu-dark;
+	background-color: fade(@menu-dark, 20%);
+	min-width: 130px;
+}
+
+#quick-menu > div {
+	margin: 0 15px 15px 15px;
+}
+
+#quick-menu > div:first-child {
+	margin: 15px 15px 15px 15px;
+}
+
+.button {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 5px;
+	transition-duration: 0.2s;
+	-moz-user-select: none;
+	-ms-user-select: none;
+	-webkit-user-select: none;
+	user-select: none;
+	cursor: default;
+}
+
+#quick-menu .button {
+	border: 2px white solid;
+	border-color: fade(@menu-dark, 20%);
+}
+#quick-menu .button:hover {
+	border: 2px white solid;
+	border-color: fade(@menu-dark, 60%);
+}
+
+#generation {
+	text-align: center;
+}
+
+.setting {
+	margin: 20px 10px;
+}
+
+#settings > div:not(:first-child) {
+	margin-top: 40px;
+}
+
+#settings > div:last-child {
+	margin-bottom: 40px;
+}
+
+.setting-header {
+	display: flex;
+	flex-direction: row;
+	justify-content: space-between;
+	align-items: center;
+}
+
+.setting-title {
+	color: rgba(255, 255, 255, 0.5);
+	font-size: 20px;
+	margin: 10px;
+}
+
+.settings-group-title {
+	color: white;
+	font-size: 25px;
+	margin: 20px 10px;
+}
+
+.reset-button {
+	color: rgba(255, 255, 255, 0.3);
+	border: 1px rgba(255, 255, 255, 0.1) solid;
+	padding: 2px 4px;
+	font-size: 15px;
+}
+
+.reset-button:hover {
+	color: rgba(255, 255, 255, 0.6);
+	border: 1px rgba(255, 255, 255, 0.2) solid;
+}
+
+.separator {
+	margin-left: 40px;
+	margin-right: 40px;
+	height: 1px;
+	background-color: rgba(255, 255, 255, 0.5);
+}
+
+#my-image {
+	opacity: 0.5;
+	border-radius: 50px;
+	transition-duration: 0.5s;
+}
+
+#my-name {
+	color: white;
+	margin: 10px;
+}
+
+#me {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+}
+
+#see-also {
+	color: white;
+}
+
+#see-also > a {
+	color: rgb(49, 105, 42);
+	text-decoration: none;
+}
+
+#linkedId {
+	color: rgb(0, 119, 181);
+	text-decoration: none;
+	margin: 10px;
+}
+
+#my-image:hover {
+	opacity: 0.8;
+}
+
+#restart-message {
+	max-width: 120px;
+	text-align: center;
+	color: #650000;
+	display: none;
+}
