@@ -22,3 +22,8 @@ You can also simply run:
 gulp watch
 ```
 
+# Alpha
+Note that this is an early version of this software. If you can see anything that doesn't work as expected, or maybe a way to improve it, please inform me.
+As this site is still in developement, it works fine on Chrome web browser, works slow on FF and doesn't work at all at Edge.
+These are the known issues.
+
