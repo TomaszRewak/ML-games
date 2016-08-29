@@ -130,10 +130,10 @@ body {
   flex-direction: column;
   align-items: center;
 }
-#see-also {
+.see-also {
   color: white;
 }
-#see-also > a {
+.see-also > a {
   color: #31692a;
   text-decoration: none;
 }
@@ -150,4 +150,11 @@ body {
   text-align: center;
   color: #650000;
   display: none;
+}
+#alpha-indicator {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  color: rgba(0, 0, 0, 0.78);
+  font-size: 20px;
 }
