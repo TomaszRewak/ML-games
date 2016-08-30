@@ -1,6 +1,8 @@
 # ML-games
 Machine learning games. Use combination of genetic algorithms and neural networks to control the behaviour of in-game objects.
 
+Working example can be found here: http://ml-games.tomasz-rewak.com/
+
 Everything here is written from a scratch, including all ML algorithms and game engine.
 
 # Compilation
