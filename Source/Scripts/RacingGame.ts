@@ -8,6 +8,9 @@ import { HostedGame, HostedGameGenerator } from './GameHost'
 class RaceBehaviour implements ScriptBehaviour {
     private allCars: CarGameObject[];
     private started = false;
+	private whenToStop = Number.MAX_VALUE;
+
+	private finalScore: number[] = null;
 
     constructor(
 		private aiCars: CarGameObject[],
@@ -15,7 +18,7 @@ class RaceBehaviour implements ScriptBehaviour {
 		private lapLength: number,
 		private score: (p: Point2D) => number,
 		private countDown: CounterGameObject,
-		private stopCondition: (cars: { lap: number, ai: boolean, alive: boolean }[], gameTime: number) => boolean,
+		private stopCondition: (cars: { lap: number, ai: boolean, alive: boolean, active: boolean }[], gameTime: number) => boolean,
 		private onEnd: (values: number[]) => void
 	) {
         this.allCars = [userCar].concat(aiCars);
@@ -49,16 +52,21 @@ class RaceBehaviour implements ScriptBehaviour {
                 behaviour.totalScore = behaviour.laps * this.lapLength + behaviour.lapScore;
             }
 
-			let carsData = (this.userCar ? [{ car: this.userCar, ai: false }] : [])
-				.concat(this.aiCars.map(c => ({ car: c, ai: true })))
+			let carsData = (this.userCar ? [{ car: this.userCar.carBehaviour, ai: false }] : [])
+				.concat(this.aiCars.map(c => ({ car: c.carBehaviour, ai: true })))
 				.map(c => ({
-					lap: c.car.carBehaviour.laps + (c.car.carBehaviour.lapScore >= 0 ? 1 : 0),
-					alive: c.car.carBehaviour.alive,
-					ai: c.ai
+					lap: c.car.laps + (c.car.lapScore >= 0 ? 1 : 0),
+					alive: c.car.alive,
+					ai: c.ai,
+					active: c.car.isActive
 				}));
 
-            if (this.stopCondition(carsData, scene.gameTime))
-                this.onEnd(this.aiCars.map(c => -c.carBehaviour.totalScore));
+			if (!this.finalScore && this.stopCondition(carsData, scene.gameTime)) {
+				this.finalScore = this.aiCars.map(c => -c.carBehaviour.totalScore);
+				this.whenToStop = scene.gameTime + 500;
+			}
+            if (this.finalScore && scene.gameTime > this.whenToStop)
+                this.onEnd(this.finalScore);
         }
     }
 }
@@ -161,6 +169,11 @@ class CarBehaviour implements ScriptBehaviour {
     public lapScore: number = 0;
     public laps: number = 0;
 
+	private bestScore: number = Number.MIN_VALUE;
+	public inactiveFrom: number = 0;
+	public activeFrom: number = 0;
+	public isActive: boolean = true;
+
     private currentSpeed: number = 0;
 
     private input: (scene: GameScene, car: CarGameObject) => { direction: number, speed: number };
@@ -171,12 +184,13 @@ class CarBehaviour implements ScriptBehaviour {
 
     public static kill(car: CarGameObject) {
         car.carBehaviour.alive = false;
+		car.carBehaviour.isActive = false;
 
         for (let collider of car.bodyChild.children)
             if (collider.colliderBehaviour != null)
                 collider.detach();
 
-        car.bodyChild.drawBehaviour.color = 'rgb(105, 132, 95)';
+		car.paint(car.killedColor);
         car.bodyChild.drawBehaviour.depth = -1;
     }
 
@@ -185,8 +199,29 @@ class CarBehaviour implements ScriptBehaviour {
 
         car.scoreTextBox.text = `${Math.round(this.totalScore * 10) / 10} m`;
 
+		if (this.frozen) {
+			this.inactiveFrom = scene.gameTime;
+			this.activeFrom = Number.MIN_VALUE;
+		}
+
         if (!this.alive || this.frozen)
             return;
+
+		if (this.totalScore > this.bestScore + timeDiff / 10000) {
+			this.bestScore = this.totalScore;
+			this.inactiveFrom = scene.gameTime;
+			if (!this.isActive && scene.gameTime - this.activeFrom > 500) {
+				this.isActive = true;
+				car.paint(car.color);
+			}
+		}
+		else {
+			this.activeFrom = scene.gameTime;
+			if (this.isActive && scene.gameTime - this.inactiveFrom > 500) {
+				this.isActive = false;
+				car.paint(car.inactiveColor);
+			}
+		}
 
         let input = this.input(scene, car);
         input.speed = Math.max(Math.min(input.speed, 1), -1);
@@ -264,25 +299,44 @@ class CarGameObject extends GameObject {
     boxColliders: ColliderBehaviour[] = [];
     radiusGameObject: GameObject;
 
+	color: { main: string, additonal: string };
+	inactiveColor: { main: string, additonal: string };
+	killedColor: { main: string, additonal: string };
+
+	paint(color: { main: string, additonal: string }) {
+		this.bodyChild.drawBehaviour.color = color.main;
+		this.scoreTextBox.color = color.additonal;
+
+		for (let collider of this.bodyChild.children)
+			if (collider.drawBehaviour)
+				collider.drawBehaviour.color = color.additonal;
+	}
+
     constructor(behaviour: CarBehaviour, inputs: number, userCar: boolean, sensorLength: number) {
         super();
 
 		let carSize = 20;
 
-        let color = userCar ? 'hsl(195, 85%, 60%)' : 'hsl(30, 85%, 60%)';
-        let borderColor = userCar ? 'hsl(195, 85%, 20%)' : 'hsl(30, 85%, 20%)';
+		if (userCar)
+			this.color = { main: 'hsl(195, 85%, 60%)', additonal: 'hsl(195, 85%, 20%)' };
+		else
+			this.color = { main: 'hsl(30, 85%, 60%)', additonal: 'hsl(30, 85%, 20%)' };
+
+		this.killedColor = { main: 'rgb(105, 132, 95)', additonal: 'rgb(105, 132, 95)' };
+		this.inactiveColor = { main: 'rgb(150, 150, 150)', additonal: 'rgb(80, 80, 80)' };
+
         let depth = userCar ? 10 : 0;
 
         this.scriptBehaviours.add(behaviour);
         this.carBehaviour = behaviour;
 
         this.bodyChild = new GameObject();
-        this.bodyChild.drawBehaviour = new DrawRectBehaviour(depth, color);
+        this.bodyChild.drawBehaviour = new DrawRectBehaviour(depth, 'white');
         this.bodyChild.transform(Transformation.forScale(carSize, carSize));
         this.add(this.bodyChild);
 
         let scoreGameObject = new GameObject();
-        this.scoreTextBox = new DrawTextBehaviour('', depth + 2, borderColor);
+        this.scoreTextBox = new DrawTextBehaviour('', depth + 2, 'white');
         scoreGameObject.drawBehaviour = this.scoreTextBox;
         scoreGameObject.transform(Transformation.forScale(16, 16));
         scoreGameObject.transform(Transformation.forTranslation(0, 20));
@@ -308,12 +362,13 @@ class CarGameObject extends GameObject {
             collider.colliderBehaviour = new ColliderBehaviour(false, true);
             collider.transform(Transformation.forTranslation(0, -.5));
             collider.transform(Transformation.forRotation(rotation));
-            collider.drawBehaviour = new DrawLineBehaviour(depth + 1, borderColor);
+            collider.drawBehaviour = new DrawLineBehaviour(depth + 1, 'white');
             this.bodyChild.add(collider);
             this.boxColliders.push(collider.colliderBehaviour);
         }
 
         this.showMovingElements(false);
+		this.paint(this.color);
     }
 
     public showMovingElements(visible: boolean) {
@@ -455,7 +510,7 @@ export class Race implements HostedGame {
         }));
 
 		let viewport = { minX: Number.MAX_VALUE, minY: Number.MAX_VALUE, maxX: Number.MIN_VALUE, maxY: Number.MIN_VALUE };
-		
+
         for (let i = 0; i < tracks.length; i++) {
             let track = tracks[i];
 

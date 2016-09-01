@@ -124,9 +124,9 @@ $(() => {
 		),
 
 		stopCondition: new Setting('Stop condition of race', '',
-			`// (car: {lap: number, ai: boolean, alive: boolean}[], gameTime: number) => boolean
+			`// (car: {lap: number, ai: boolean, alive: boolean}[], gameTime: number, active: boolean) => boolean
 function(cars, gameTime) {`,
-			`return cars.filter(c => c.ai && c.alive && c.lap < 2).length === 0 || gameTime > 20000;`,
+			`return cars.filter(c => c.ai && c.active && c.lap < 2).length === 0 || gameTime > 20000;`,
 			`}`,
 			'javascript', 'race-settings'
 		),

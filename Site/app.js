@@ -695,6 +695,8 @@ class RaceBehaviour {
         this.stopCondition = stopCondition;
         this.onEnd = onEnd;
         this.started = false;
+        this.whenToStop = Number.MAX_VALUE;
+        this.finalScore = null;
         this.allCars = [userCar].concat(aiCars);
     }
     onUpdate(scene) {
@@ -721,15 +723,20 @@ class RaceBehaviour {
                 behaviour.lapScore = score;
                 behaviour.totalScore = behaviour.laps * this.lapLength + behaviour.lapScore;
             }
-            let carsData = (this.userCar ? [{ car: this.userCar, ai: false }] : [])
-                .concat(this.aiCars.map(c => ({ car: c, ai: true })))
+            let carsData = (this.userCar ? [{ car: this.userCar.carBehaviour, ai: false }] : [])
+                .concat(this.aiCars.map(c => ({ car: c.carBehaviour, ai: true })))
                 .map(c => ({
-                lap: c.car.carBehaviour.laps + (c.car.carBehaviour.lapScore >= 0 ? 1 : 0),
-                alive: c.car.carBehaviour.alive,
-                ai: c.ai
+                lap: c.car.laps + (c.car.lapScore >= 0 ? 1 : 0),
+                alive: c.car.alive,
+                ai: c.ai,
+                active: c.car.isActive
             }));
-            if (this.stopCondition(carsData, scene.gameTime))
-                this.onEnd(this.aiCars.map(c => -c.carBehaviour.totalScore));
+            if (!this.finalScore && this.stopCondition(carsData, scene.gameTime)) {
+                this.finalScore = this.aiCars.map(c => -c.carBehaviour.totalScore);
+                this.whenToStop = scene.gameTime + 500;
+            }
+            if (this.finalScore && scene.gameTime > this.whenToStop)
+                this.onEnd(this.finalScore);
         }
     }
 }
@@ -802,22 +809,46 @@ class CarBehaviour {
         this.totalScore = 0;
         this.lapScore = 0;
         this.laps = 0;
+        this.bestScore = Number.MIN_VALUE;
+        this.inactiveFrom = 0;
+        this.activeFrom = 0;
+        this.isActive = true;
         this.currentSpeed = 0;
         this.input = input;
     }
     static kill(car) {
         car.carBehaviour.alive = false;
+        car.carBehaviour.isActive = false;
         for (let collider of car.bodyChild.children)
             if (collider.colliderBehaviour != null)
                 collider.detach();
-        car.bodyChild.drawBehaviour.color = 'rgb(105, 132, 95)';
+        car.paint(car.killedColor);
         car.bodyChild.drawBehaviour.depth = -1;
     }
     onUpdate(scene, gameObject, timeDiff) {
         let car = gameObject;
         car.scoreTextBox.text = `${Math.round(this.totalScore * 10) / 10} m`;
+        if (this.frozen) {
+            this.inactiveFrom = scene.gameTime;
+            this.activeFrom = Number.MIN_VALUE;
+        }
         if (!this.alive || this.frozen)
             return;
+        if (this.totalScore > this.bestScore + timeDiff / 10000) {
+            this.bestScore = this.totalScore;
+            this.inactiveFrom = scene.gameTime;
+            if (!this.isActive && scene.gameTime - this.activeFrom > 500) {
+                this.isActive = true;
+                car.paint(car.color);
+            }
+        }
+        else {
+            this.activeFrom = scene.gameTime;
+            if (this.isActive && scene.gameTime - this.inactiveFrom > 500) {
+                this.isActive = false;
+                car.paint(car.inactiveColor);
+            }
+        }
         let input = this.input(scene, car);
         input.speed = Math.max(Math.min(input.speed, 1), -1);
         let transform = car.bodyChild.getTransformation();
@@ -876,17 +907,21 @@ class CarGameObject extends GameEngine_1.GameObject {
         this.colliders = [];
         this.boxColliders = [];
         let carSize = 20;
-        let color = userCar ? 'hsl(195, 85%, 60%)' : 'hsl(30, 85%, 60%)';
-        let borderColor = userCar ? 'hsl(195, 85%, 20%)' : 'hsl(30, 85%, 20%)';
+        if (userCar)
+            this.color = { main: 'hsl(195, 85%, 60%)', additonal: 'hsl(195, 85%, 20%)' };
+        else
+            this.color = { main: 'hsl(30, 85%, 60%)', additonal: 'hsl(30, 85%, 20%)' };
+        this.killedColor = { main: 'rgb(105, 132, 95)', additonal: 'rgb(105, 132, 95)' };
+        this.inactiveColor = { main: 'rgb(150, 150, 150)', additonal: 'rgb(80, 80, 80)' };
         let depth = userCar ? 10 : 0;
         this.scriptBehaviours.add(behaviour);
         this.carBehaviour = behaviour;
         this.bodyChild = new GameEngine_1.GameObject();
-        this.bodyChild.drawBehaviour = new GameEngine_1.DrawRectBehaviour(depth, color);
+        this.bodyChild.drawBehaviour = new GameEngine_1.DrawRectBehaviour(depth, 'white');
         this.bodyChild.transform(GraphicsMath_1.Transformation.forScale(carSize, carSize));
         this.add(this.bodyChild);
         let scoreGameObject = new GameEngine_1.GameObject();
-        this.scoreTextBox = new GameEngine_1.DrawTextBehaviour('', depth + 2, borderColor);
+        this.scoreTextBox = new GameEngine_1.DrawTextBehaviour('', depth + 2, 'white');
         scoreGameObject.drawBehaviour = this.scoreTextBox;
         scoreGameObject.transform(GraphicsMath_1.Transformation.forScale(16, 16));
         scoreGameObject.transform(GraphicsMath_1.Transformation.forTranslation(0, 20));
@@ -905,11 +940,19 @@ class CarGameObject extends GameEngine_1.GameObject {
             collider.colliderBehaviour = new GameEngine_1.ColliderBehaviour(false, true);
             collider.transform(GraphicsMath_1.Transformation.forTranslation(0, -.5));
             collider.transform(GraphicsMath_1.Transformation.forRotation(rotation));
-            collider.drawBehaviour = new GameEngine_1.DrawLineBehaviour(depth + 1, borderColor);
+            collider.drawBehaviour = new GameEngine_1.DrawLineBehaviour(depth + 1, 'white');
             this.bodyChild.add(collider);
             this.boxColliders.push(collider.colliderBehaviour);
         }
         this.showMovingElements(false);
+        this.paint(this.color);
+    }
+    paint(color) {
+        this.bodyChild.drawBehaviour.color = color.main;
+        this.scoreTextBox.color = color.additonal;
+        for (let collider of this.bodyChild.children)
+            if (collider.drawBehaviour)
+                collider.drawBehaviour.color = color.additonal;
     }
     showMovingElements(visible) {
         for (let collder of this.colliders)
@@ -1294,8 +1337,8 @@ $(() => {
 	"trackSegmentFill": 0.6,
 	"trackCornerCut": 0.5
 }`, undefined, 'json', 'race-settings'),
-        stopCondition: new Setting('Stop condition of race', '', `// (car: {lap: number, ai: boolean, alive: boolean}[], gameTime: number) => boolean
-function(cars, gameTime) {`, `return cars.filter(c => c.ai && c.alive && c.lap < 2).length === 0 || gameTime > 20000;`, `}`, 'javascript', 'race-settings'),
+        stopCondition: new Setting('Stop condition of race', '', `// (car: {lap: number, ai: boolean, alive: boolean}[], gameTime: number, active: boolean) => boolean
+function(cars, gameTime) {`, `return cars.filter(c => c.ai && c.active && c.lap < 2).length === 0 || gameTime > 20000;`, `}`, 'javascript', 'race-settings'),
         // NN settings
         networkSize: new Setting('Network size', '', undefined, `{
 	"inputs": 8,
