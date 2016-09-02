@@ -126,7 +126,7 @@ $(() => {
 		stopCondition: new Setting('Stop condition of race', '',
 			`// (car: {lap: number, ai: boolean, alive: boolean}[], gameTime: number, active: boolean) => boolean
 function(cars, gameTime) {`,
-			`return cars.filter(c => c.ai && c.active && c.lap < 2).length === 0 || gameTime > 20000;`,
+			`return cars.filter(c => c.ai && c.active && c.lap < 2).length === 0 || gameTime > 60000;`,
 			`}`,
 			'javascript', 'race-settings'
 		),
@@ -193,7 +193,7 @@ function*(fitnesses) {`,
 	yield new Array(5).fill(0)
 		.map(v => Math.floor(Math.random() * fitnesses.length))
 		.map(v => ({ score: fitnesses[v], index: v }))
-		.reduce((p, c) => (p.score < c.score) ? p : c)
+		.reduce((p, c) => (p.score > c.score) ? p : c)
 		.index;
 }`,
 			`	throw "Selection generator drained";

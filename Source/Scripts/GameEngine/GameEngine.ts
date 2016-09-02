@@ -75,7 +75,7 @@ abstract class DrawBehaviour implements Behaviour {
 }
 
 export class DrawRectBehaviour extends DrawBehaviour {
-    constructor(depth: number, color: string) {
+    constructor(color: string = '', depth: number = 0) {
         super(color, depth);
     }
 
@@ -85,7 +85,7 @@ export class DrawRectBehaviour extends DrawBehaviour {
 }
 
 export class DrawCircleBehaviour extends DrawBehaviour {
-    constructor(depth: number, color: string) {
+    constructor(color: string = '', depth: number = 0) {
         super(color, depth);
     }
 
@@ -95,7 +95,7 @@ export class DrawCircleBehaviour extends DrawBehaviour {
 }
 
 export class DrawLineBehaviour extends DrawBehaviour {
-    constructor(depth: number, color: string, private width = 1) {
+    constructor(color: string = '', depth: number = 0, private width = 1) {
         super(color, depth);
     }
 
@@ -106,7 +106,7 @@ export class DrawLineBehaviour extends DrawBehaviour {
 
 export class DrawTextBehaviour extends DrawBehaviour {
     public color: string;
-    constructor(public text: string, depth: number, color: string, private align: string = undefined, private baseline: string = undefined, private font: string = undefined) {
+    constructor(public text: string = '', color: string = '', depth: number = 0, private align: string = undefined, private baseline: string = undefined, private font: string = undefined) {
         super(color, depth);
     }
 
@@ -273,7 +273,8 @@ export class ColliderBehaviour implements Behaviour {
 }
 
 export interface ScriptBehaviour extends Behaviour {
-    onUpdate(scene: GameScene, gameObject: GameObject, timeDiff: number);
+    onUpdate?(scene: GameScene, gameObject: GameObject, timeDiff: number);
+    postUpdate?(scene: GameScene, gameObject: GameObject, timeDiff: number);
 }
 
 enum GameState {
@@ -360,7 +361,13 @@ export class GameScene extends GameObject {
 
         for (let gameObject of this.iterator())
             for (let script of gameObject.scriptBehaviours)
-                script.onUpdate(this, gameObject, timeDiff);
+				if (script.onUpdate)
+					script.onUpdate(this, gameObject, timeDiff);
+
+		for (let gameObject of this.iterator())
+            for (let script of gameObject.scriptBehaviours)
+				if (script.postUpdate)
+					script.postUpdate(this, gameObject, timeDiff);
 
 		let drawElements = Array.from(this.transformIterator())
 			.filter(e => e.gameObject.drawBehaviour != null && e.gameObject.drawBehaviour.visible)

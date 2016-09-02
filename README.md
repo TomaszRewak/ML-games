@@ -1,3 +1,5 @@
+[![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=JR5PH24URK28S)
+
 # ML-games
 Machine learning games. Use combination of genetic algorithms and neural networks to control the behaviour of in-game objects.
 

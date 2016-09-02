@@ -118,7 +118,7 @@ class DrawBehaviour {
     }
 }
 class DrawRectBehaviour extends DrawBehaviour {
-    constructor(depth, color) {
+    constructor(color = '', depth = 0) {
         super(color, depth);
     }
     draw(graphicsInterface, transform) {
@@ -127,7 +127,7 @@ class DrawRectBehaviour extends DrawBehaviour {
 }
 exports.DrawRectBehaviour = DrawRectBehaviour;
 class DrawCircleBehaviour extends DrawBehaviour {
-    constructor(depth, color) {
+    constructor(color = '', depth = 0) {
         super(color, depth);
     }
     draw(graphicsInterface, transform) {
@@ -136,7 +136,7 @@ class DrawCircleBehaviour extends DrawBehaviour {
 }
 exports.DrawCircleBehaviour = DrawCircleBehaviour;
 class DrawLineBehaviour extends DrawBehaviour {
-    constructor(depth, color, width = 1) {
+    constructor(color = '', depth = 0, width = 1) {
         super(color, depth);
         this.width = width;
     }
@@ -146,7 +146,7 @@ class DrawLineBehaviour extends DrawBehaviour {
 }
 exports.DrawLineBehaviour = DrawLineBehaviour;
 class DrawTextBehaviour extends DrawBehaviour {
-    constructor(text, depth, color, align = undefined, baseline = undefined, font = undefined) {
+    constructor(text = '', color = '', depth = 0, align = undefined, baseline = undefined, font = undefined) {
         super(color, depth);
         this.text = text;
         this.align = align;
@@ -328,7 +328,12 @@ class GameScene extends GameObject {
                 collider.collide(trigger);
         for (let gameObject of this.iterator())
             for (let script of gameObject.scriptBehaviours)
-                script.onUpdate(this, gameObject, timeDiff);
+                if (script.onUpdate)
+                    script.onUpdate(this, gameObject, timeDiff);
+        for (let gameObject of this.iterator())
+            for (let script of gameObject.scriptBehaviours)
+                if (script.postUpdate)
+                    script.postUpdate(this, gameObject, timeDiff);
         let drawElements = Array.from(this.transformIterator())
             .filter(e => e.gameObject.drawBehaviour != null && e.gameObject.drawBehaviour.visible)
             .sort((a, b) => a.gameObject.drawBehaviour.depth - b.gameObject.drawBehaviour.depth);
@@ -731,9 +736,16 @@ class RaceBehaviour {
                 ai: c.ai,
                 active: c.car.isActive
             }));
-            if (!this.finalScore && this.stopCondition(carsData, scene.gameTime)) {
-                this.finalScore = this.aiCars.map(c => -c.carBehaviour.totalScore);
-                this.whenToStop = scene.gameTime + 500;
+            if (!this.finalScore) {
+                let score = this.aiCars.map(c => c.carBehaviour.totalScore);
+                score.map((v, i) => ({
+                    score: v,
+                    car: this.aiCars[i]
+                })).sort((a, b) => b.score - a.score).forEach((v, i) => v.car.setPlace(i + 1, this.aiCars.length));
+                if (this.stopCondition(carsData, scene.gameTime)) {
+                    this.finalScore = score;
+                    this.whenToStop = scene.gameTime + 1000;
+                }
             }
             if (this.finalScore && scene.gameTime > this.whenToStop)
                 this.onEnd(this.finalScore);
@@ -747,7 +759,7 @@ class CameraBehaviour {
         this.viewport = viewport;
         this.zoom = 1;
     }
-    onUpdate(scene, camera) {
+    postUpdate(scene, camera) {
         camera.resetTransformation();
         let centerX = (this.viewport.minX + this.viewport.maxX) / 2, centerY = (this.viewport.minY + this.viewport.maxY) / 2;
         camera.transform(GraphicsMath_1.Transformation.forTranslation(-centerX, -centerY));
@@ -770,7 +782,7 @@ class CameraBehaviour {
 class UICameraBehaviour {
     constructor() {
     }
-    onUpdate(scene, camera) {
+    postUpdate(scene, camera) {
         camera.resetTransformation();
         let screenWidth = scene.graphics.width(), screenHeight = scene.graphics.height();
         camera.transform(GraphicsMath_1.Transformation.forTranslation(screenWidth / 2, screenHeight / 2));
@@ -781,11 +793,11 @@ class CounterGameObject extends GameEngine_1.GameObject {
         super();
         this.countDownTime = 1900;
         this.ready = false;
-        this.text = new GameEngine_1.DrawTextBehaviour("", 1000, 'white');
+        this.text = new GameEngine_1.DrawTextBehaviour('', 'white', 1000);
         this.drawBehaviour = this.text;
         this.transform(GraphicsMath_1.Transformation.forScale(200, 200));
         let back = new GameEngine_1.GameObject();
-        back.drawBehaviour = new GameEngine_1.DrawRectBehaviour(999, 'rgba(0,0,0,0.3)');
+        back.drawBehaviour = new GameEngine_1.DrawRectBehaviour('rgba(0,0,0,0.3)', 999);
         back.transform(GraphicsMath_1.Transformation.forScale(100000, 1));
         this.add(back);
         this.scriptBehaviours.add({
@@ -882,7 +894,7 @@ class SensorGameObject extends GameEngine_1.GameObject {
         this.transform(GraphicsMath_1.Transformation.forTranslation(0, -0.5 - d));
         this.transform(GraphicsMath_1.Transformation.forRotation(rotation));
         this.drawChild = new GameEngine_1.GameObject();
-        this.drawChild.drawBehaviour = new GameEngine_1.DrawLineBehaviour(-50, 'hsl(104, 15%, 50%)', 1);
+        this.drawChild.drawBehaviour = new GameEngine_1.DrawLineBehaviour('hsl(104, 15%, 50%)', -50, 1);
         this.add(this.drawChild);
         this.scriptBehaviours.add({
             onUpdate: (scene, gameObject) => { this.updateDisplay(); }
@@ -906,27 +918,33 @@ class CarGameObject extends GameEngine_1.GameObject {
         super();
         this.colliders = [];
         this.boxColliders = [];
+        this.place = undefined;
         let carSize = 20;
         if (userCar)
             this.color = { main: 'hsl(195, 85%, 60%)', additonal: 'hsl(195, 85%, 20%)' };
         else
             this.color = { main: 'hsl(30, 85%, 60%)', additonal: 'hsl(30, 85%, 20%)' };
-        this.killedColor = { main: 'rgb(105, 132, 95)', additonal: 'rgb(105, 132, 95)' };
+        this.killedColor = { main: 'rgb(105, 132, 95)', additonal: 'rgb(85, 112, 75)' };
         this.inactiveColor = { main: 'rgb(150, 150, 150)', additonal: 'rgb(80, 80, 80)' };
-        let depth = userCar ? 10 : 0;
         this.scriptBehaviours.add(behaviour);
         this.carBehaviour = behaviour;
         this.bodyChild = new GameEngine_1.GameObject();
-        this.bodyChild.drawBehaviour = new GameEngine_1.DrawRectBehaviour(depth, 'white');
+        this.bodyChild.drawBehaviour = new GameEngine_1.DrawRectBehaviour();
         this.bodyChild.transform(GraphicsMath_1.Transformation.forScale(carSize, carSize));
         this.add(this.bodyChild);
         let scoreGameObject = new GameEngine_1.GameObject();
-        this.scoreTextBox = new GameEngine_1.DrawTextBehaviour('', depth + 2, 'white');
+        this.scoreTextBox = new GameEngine_1.DrawTextBehaviour();
         scoreGameObject.drawBehaviour = this.scoreTextBox;
         scoreGameObject.transform(GraphicsMath_1.Transformation.forScale(16, 16));
         scoreGameObject.transform(GraphicsMath_1.Transformation.forTranslation(0, 20));
         scoreGameObject.drawBehaviour.visible = false;
         this.add(scoreGameObject);
+        let placeGameObject = new GameEngine_1.GameObject();
+        this.placeTextBox = new GameEngine_1.DrawTextBehaviour();
+        placeGameObject.drawBehaviour = this.placeTextBox;
+        placeGameObject.transform(GraphicsMath_1.Transformation.forScale(14, 14));
+        placeGameObject.drawBehaviour.visible = false;
+        this.add(placeGameObject);
         let collidersRotations = Array(inputs).fill(0).map((v, i) => i * Math.PI / (inputs - 1) - Math.PI / 2);
         let colliderRadius = sensorLength /= carSize;
         for (let rotation of collidersRotations) {
@@ -940,16 +958,18 @@ class CarGameObject extends GameEngine_1.GameObject {
             collider.colliderBehaviour = new GameEngine_1.ColliderBehaviour(false, true);
             collider.transform(GraphicsMath_1.Transformation.forTranslation(0, -.5));
             collider.transform(GraphicsMath_1.Transformation.forRotation(rotation));
-            collider.drawBehaviour = new GameEngine_1.DrawLineBehaviour(depth + 1, 'white');
+            collider.drawBehaviour = new GameEngine_1.DrawLineBehaviour();
             this.bodyChild.add(collider);
             this.boxColliders.push(collider.colliderBehaviour);
         }
         this.showMovingElements(false);
         this.paint(this.color);
+        this.setDepth(userCar ? -1 : 0, 1);
     }
     paint(color) {
         this.bodyChild.drawBehaviour.color = color.main;
         this.scoreTextBox.color = color.additonal;
+        this.placeTextBox.color = color.additonal;
         for (let collider of this.bodyChild.children)
             if (collider.drawBehaviour)
                 collider.drawBehaviour.color = color.additonal;
@@ -958,6 +978,23 @@ class CarGameObject extends GameEngine_1.GameObject {
         for (let collder of this.colliders)
             collder.setVisible(visible);
         this.scoreTextBox.visible = visible;
+        this.placeTextBox.visible = visible;
+    }
+    setDepth(no, on) {
+        let depth = -no / on;
+        let diff = 1 / on;
+        this.bodyChild.drawBehaviour.depth = depth;
+        this.scoreTextBox.depth = depth + diff / 2 - 3;
+        this.placeTextBox.depth = depth + diff / 2;
+        for (let collider of this.bodyChild.children)
+            if (collider.drawBehaviour)
+                collider.drawBehaviour.depth = depth + diff / 2;
+    }
+    setPlace(place, on) {
+        if (place != this.place) {
+            this.placeTextBox.text = place.toString();
+            this.setDepth(place, on);
+        }
     }
 }
 class PointPointGameObject extends GameEngine_1.GameObject {
@@ -986,13 +1023,13 @@ class WallGameObject extends PointPointGameObject {
     constructor(a, b) {
         super(a, b);
         this.colliderBehaviour = new WallCollider();
-        this.drawBehaviour = new GameEngine_1.DrawLineBehaviour(10, 'rgb(85, 112, 75)', 2);
+        this.drawBehaviour = new GameEngine_1.DrawLineBehaviour('rgb(85, 112, 75)', 10, 2);
     }
 }
 class GroundGameObject extends GameEngine_1.GameObject {
     constructor(x, y, rotation, width, height) {
         super();
-        this.drawBehaviour = new GameEngine_1.DrawRectBehaviour(-300, 'rgb(165, 192, 155)');
+        this.drawBehaviour = new GameEngine_1.DrawRectBehaviour('rgb(165, 192, 155)', -300);
         this.transform(GraphicsMath_1.Transformation.forScale(width, height));
         this.transform(GraphicsMath_1.Transformation.forRotation(rotation));
         this.transform(GraphicsMath_1.Transformation.forTranslation(x, y));
@@ -1123,7 +1160,7 @@ class Race {
                 if (i == 0) {
                     let lineGO = new GameEngine_1.GameObject();
                     lineGO.transform(GraphicsMath_1.Transformation.forScale(trackFill, 0.3));
-                    lineGO.drawBehaviour = new GameEngine_1.DrawRectBehaviour(-290, 'hsl(104, 15%, 60%)');
+                    lineGO.drawBehaviour = new GameEngine_1.DrawRectBehaviour('hsl(104, 15%, 60%)', -290);
                     go.add(lineGO);
                 }
                 if (track.to == Direction.Right)
@@ -1172,7 +1209,7 @@ class Race {
             scores[track.y][track.x] = score;
         }
         let background = new GameEngine_1.GameObject();
-        background.drawBehaviour = new GameEngine_1.DrawRectBehaviour(-1000, 'hsl(104, 15%, 50%)');
+        background.drawBehaviour = new GameEngine_1.DrawRectBehaviour('hsl(104, 15%, 50%)', -1000);
         background.transform(GraphicsMath_1.Transformation.forScale(viewport.maxX - viewport.minX + 20, viewport.maxY - viewport.minY + 20));
         background.transform(GraphicsMath_1.Transformation.forTranslation((viewport.maxX + viewport.minX) / 2, (viewport.maxY + viewport.minY) / 2));
         holder.add(background);
@@ -1338,7 +1375,7 @@ $(() => {
 	"trackCornerCut": 0.5
 }`, undefined, 'json', 'race-settings'),
         stopCondition: new Setting('Stop condition of race', '', `// (car: {lap: number, ai: boolean, alive: boolean}[], gameTime: number, active: boolean) => boolean
-function(cars, gameTime) {`, `return cars.filter(c => c.ai && c.active && c.lap < 2).length === 0 || gameTime > 20000;`, `}`, 'javascript', 'race-settings'),
+function(cars, gameTime) {`, `return cars.filter(c => c.ai && c.active && c.lap < 2).length === 0 || gameTime > 60000;`, `}`, 'javascript', 'race-settings'),
         // NN settings
         networkSize: new Setting('Network size', '', undefined, `{
 	"inputs": 8,
@@ -1367,7 +1404,7 @@ function*(fitnesses) {`, `while (true) {
 	yield new Array(5).fill(0)
 		.map(v => Math.floor(Math.random() * fitnesses.length))
 		.map(v => ({ score: fitnesses[v], index: v }))
-		.reduce((p, c) => (p.score < c.score) ? p : c)
+		.reduce((p, c) => (p.score > c.score) ? p : c)
 		.index;
 }`, `	throw "Selection generator drained";
 }`, 'javascript', 'ga-settings'),

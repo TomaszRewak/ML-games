@@ -61,9 +61,17 @@ class RaceBehaviour implements ScriptBehaviour {
 					active: c.car.isActive
 				}));
 
-			if (!this.finalScore && this.stopCondition(carsData, scene.gameTime)) {
-				this.finalScore = this.aiCars.map(c => -c.carBehaviour.totalScore);
-				this.whenToStop = scene.gameTime + 500;
+			if (!this.finalScore) {
+				let score = this.aiCars.map(c => c.carBehaviour.totalScore);
+				score.map((v, i) => ({
+					score: v,
+					car: this.aiCars[i]
+				})).sort((a, b) => b.score - a.score).forEach((v, i) => v.car.setPlace(i + 1, this.aiCars.length));
+
+				if (this.stopCondition(carsData, scene.gameTime)) {
+					this.finalScore = score;
+					this.whenToStop = scene.gameTime + 1000;
+				}
 			}
             if (this.finalScore && scene.gameTime > this.whenToStop)
                 this.onEnd(this.finalScore);
@@ -80,7 +88,7 @@ class CameraBehaviour implements ScriptBehaviour {
 		public viewport: { minX: number, minY: number, maxX: number, maxY: number }) {
 	}
 
-	public onUpdate(scene: GameScene, camera: GameObject) {
+	public postUpdate(scene: GameScene, camera: GameObject) {
 		camera.resetTransformation();
 
 		let centerX = (this.viewport.minX + this.viewport.maxX) / 2,
@@ -118,7 +126,7 @@ class UICameraBehaviour implements ScriptBehaviour {
 	constructor() {
 	}
 
-	public onUpdate(scene: GameScene, camera: GameObject) {
+	public postUpdate(scene: GameScene, camera: GameObject) {
 		camera.resetTransformation();
 
 		let screenWidth = scene.graphics.width(),
@@ -136,12 +144,12 @@ class CounterGameObject extends GameObject {
     constructor() {
         super();
 
-        this.text = new DrawTextBehaviour("", 1000, 'white');
+        this.text = new DrawTextBehaviour('', 'white', 1000);
         this.drawBehaviour = this.text;
         this.transform(Transformation.forScale(200, 200));
 
 		let back = new GameObject();
-		back.drawBehaviour = new DrawRectBehaviour(999, 'rgba(0,0,0,0.3)');
+		back.drawBehaviour = new DrawRectBehaviour('rgba(0,0,0,0.3)', 999);
 		back.transform(Transformation.forScale(100000, 1));
 		this.add(back);
 
@@ -266,7 +274,7 @@ class SensorGameObject extends GameObject {
         this.transform(Transformation.forRotation(rotation));
 
         this.drawChild = new GameObject();
-        this.drawChild.drawBehaviour = new DrawLineBehaviour(-50, 'hsl(104, 15%, 50%)', 1);
+        this.drawChild.drawBehaviour = new DrawLineBehaviour('hsl(104, 15%, 50%)', -50, 1);
         this.add(this.drawChild);
 
         this.scriptBehaviours.add({
@@ -295,6 +303,7 @@ class CarGameObject extends GameObject {
     carBehaviour: CarBehaviour;
     bodyChild: GameObject;
     scoreTextBox: DrawTextBehaviour;
+	placeTextBox: DrawTextBehaviour;
     colliders: SensorGameObject[] = [];
     boxColliders: ColliderBehaviour[] = [];
     radiusGameObject: GameObject;
@@ -306,6 +315,7 @@ class CarGameObject extends GameObject {
 	paint(color: { main: string, additonal: string }) {
 		this.bodyChild.drawBehaviour.color = color.main;
 		this.scoreTextBox.color = color.additonal;
+		this.placeTextBox.color = color.additonal;
 
 		for (let collider of this.bodyChild.children)
 			if (collider.drawBehaviour)
@@ -322,26 +332,31 @@ class CarGameObject extends GameObject {
 		else
 			this.color = { main: 'hsl(30, 85%, 60%)', additonal: 'hsl(30, 85%, 20%)' };
 
-		this.killedColor = { main: 'rgb(105, 132, 95)', additonal: 'rgb(105, 132, 95)' };
+		this.killedColor = { main: 'rgb(105, 132, 95)', additonal: 'rgb(85, 112, 75)' };
 		this.inactiveColor = { main: 'rgb(150, 150, 150)', additonal: 'rgb(80, 80, 80)' };
-
-        let depth = userCar ? 10 : 0;
 
         this.scriptBehaviours.add(behaviour);
         this.carBehaviour = behaviour;
 
         this.bodyChild = new GameObject();
-        this.bodyChild.drawBehaviour = new DrawRectBehaviour(depth, 'white');
+        this.bodyChild.drawBehaviour = new DrawRectBehaviour();
         this.bodyChild.transform(Transformation.forScale(carSize, carSize));
         this.add(this.bodyChild);
 
         let scoreGameObject = new GameObject();
-        this.scoreTextBox = new DrawTextBehaviour('', depth + 2, 'white');
+        this.scoreTextBox = new DrawTextBehaviour();
         scoreGameObject.drawBehaviour = this.scoreTextBox;
         scoreGameObject.transform(Transformation.forScale(16, 16));
         scoreGameObject.transform(Transformation.forTranslation(0, 20));
         scoreGameObject.drawBehaviour.visible = false;
         this.add(scoreGameObject);
+
+		let placeGameObject = new GameObject();
+		this.placeTextBox = new DrawTextBehaviour();
+        placeGameObject.drawBehaviour = this.placeTextBox;
+        placeGameObject.transform(Transformation.forScale(14, 14));
+        placeGameObject.drawBehaviour.visible = false;
+        this.add(placeGameObject);
 
         let collidersRotations = Array(inputs).fill(0).map((v, i) => i * Math.PI / (inputs - 1) - Math.PI / 2);
 
@@ -362,13 +377,15 @@ class CarGameObject extends GameObject {
             collider.colliderBehaviour = new ColliderBehaviour(false, true);
             collider.transform(Transformation.forTranslation(0, -.5));
             collider.transform(Transformation.forRotation(rotation));
-            collider.drawBehaviour = new DrawLineBehaviour(depth + 1, 'white');
+            collider.drawBehaviour = new DrawLineBehaviour();
             this.bodyChild.add(collider);
             this.boxColliders.push(collider.colliderBehaviour);
         }
 
         this.showMovingElements(false);
 		this.paint(this.color);
+
+		this.setDepth(userCar ? -1 : 0, 1);
     }
 
     public showMovingElements(visible: boolean) {
@@ -376,7 +393,29 @@ class CarGameObject extends GameObject {
             collder.setVisible(visible);
 
         this.scoreTextBox.visible = visible;
+		this.placeTextBox.visible = visible;
     }
+
+	private setDepth(no: number, on: number) {
+		let depth = - no / on;
+		let diff = 1 / on;
+
+		this.bodyChild.drawBehaviour.depth = depth;
+		this.scoreTextBox.depth = depth + diff / 2 - 3;
+		this.placeTextBox.depth = depth + diff / 2;
+
+		for (let collider of this.bodyChild.children)
+			if (collider.drawBehaviour)
+				collider.drawBehaviour.depth = depth + diff / 2;
+	}
+
+	private place = undefined;
+	public setPlace(place: number, on: number) {
+		if (place != this.place) {
+			this.placeTextBox.text = place.toString();
+			this.setDepth(place, on);
+		}
+	}
 }
 
 class PointPointGameObject extends GameObject {
@@ -413,7 +452,7 @@ class WallGameObject extends PointPointGameObject {
         super(a, b);
 
         this.colliderBehaviour = new WallCollider();
-        this.drawBehaviour = new DrawLineBehaviour(10, 'rgb(85, 112, 75)', 2);
+        this.drawBehaviour = new DrawLineBehaviour('rgb(85, 112, 75)', 10, 2);
     }
 }
 
@@ -421,7 +460,7 @@ class GroundGameObject extends GameObject {
     constructor(x: number, y: number, rotation: number, width: number, height: number) {
         super();
 
-        this.drawBehaviour = new DrawRectBehaviour(-300, 'rgb(165, 192, 155)');
+        this.drawBehaviour = new DrawRectBehaviour('rgb(165, 192, 155)', -300);
         this.transform(Transformation.forScale(width, height));
         this.transform(Transformation.forRotation(rotation));
         this.transform(Transformation.forTranslation(x, y));
@@ -533,7 +572,7 @@ export class Race implements HostedGame {
                 if (i == 0) {
                     let lineGO = new GameObject();
                     lineGO.transform(Transformation.forScale(trackFill, 0.3));
-                    lineGO.drawBehaviour = new DrawRectBehaviour(-290, 'hsl(104, 15%, 60%)');
+                    lineGO.drawBehaviour = new DrawRectBehaviour('hsl(104, 15%, 60%)', -290);
                     go.add(lineGO);
                 }
 
@@ -599,7 +638,7 @@ export class Race implements HostedGame {
         }
 
 		let background = new GameObject();
-		background.drawBehaviour = new DrawRectBehaviour(-1000, 'hsl(104, 15%, 50%)');
+		background.drawBehaviour = new DrawRectBehaviour('hsl(104, 15%, 50%)', -1000);
 		background.transform(Transformation.forScale(viewport.maxX - viewport.minX + 20, viewport.maxY - viewport.minY + 20));
 		background.transform(Transformation.forTranslation((viewport.maxX + viewport.minX) / 2, (viewport.maxY + viewport.minY) / 2));
 		holder.add(background);
