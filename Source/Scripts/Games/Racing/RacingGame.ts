@@ -1,9 +1,9 @@
-﻿import { NeuralNetwork, FullyConnectedNeuralNetwork } from './NN/NN'
-import { GraphicalInterface } from './GameEngine/GraphicalInterface'
-import { InputInterface } from './GameEngine/InputInterface'
-import { GameScene, GameObject, DrawRectBehaviour, DrawLineBehaviour, DrawCircleBehaviour, DrawTextBehaviour, TransformBehaviour, ScriptBehaviour, ColliderBehaviour } from './GameEngine/GameEngine'
-import { Transformation, Point2D, Vector2D } from './GameEngine/GraphicsMath'
-import { HostedGame, HostedGameGenerator } from './GameHost'
+﻿import { NeuralNetwork, FullyConnectedNeuralNetwork } from '../../NN/NN'
+import { GraphicalInterface } from '../../GameEngine/GraphicalInterface'
+import { InputInterface } from '../../GameEngine/InputInterface'
+import { GameScene, GameObject, DrawRectBehaviour, DrawLineBehaviour, DrawCircleBehaviour, DrawTextBehaviour, TransformBehaviour, ScriptBehaviour, ColliderBehaviour } from '../../GameEngine/GameEngine'
+import { Transformation, Point2D, Vector2D } from '../../GameEngine/GraphicsMath'
+import { Game, GA_NN_HostedGame, GA_NN_GameDefinition } from '../Game'
 
 class RaceBehaviour implements ScriptBehaviour {
     private allCars: CarGameObject[];
@@ -476,7 +476,7 @@ interface GameParams {
 	trackCornerCut: number
 }
 
-export class Race implements HostedGame {
+export class Race implements GA_NN_HostedGame {
     private gameScene: GameScene;
     private end: Promise<number[]>;
     private onEnd: (values: number[]) => void;
@@ -665,6 +665,7 @@ export class Race implements HostedGame {
 		graphics: GraphicalInterface,
 		gameParams: GameParams,
 		endCondition: (cars: { lap: number, ai: boolean, alive: boolean }[], gameTime: number) => boolean) {
+
 		graphics.clear();
 
         let scene = new GameScene(graphics, input);
@@ -745,17 +746,4 @@ export class Race implements HostedGame {
 
 		this.onEnd(null);
 	}
-}
-
-export class RaceGenerator implements HostedGameGenerator {
-	constructor(
-		private gameParams: GameParams,
-		private endCondition: (cars: { lap: number, ai: boolean, alive: boolean }[], gameTime: number) => boolean) {
-	}
-
-	generate = (networks: NeuralNetwork[], input: InputInterface, graphics: GraphicalInterface) => {
-		return new Race(networks, input, graphics, this.gameParams, this.endCondition);
-	}
-
-	nnOutputs = 2;
 }

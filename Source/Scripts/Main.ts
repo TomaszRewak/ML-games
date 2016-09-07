@@ -5,8 +5,8 @@
 
 import { CanvasGraphicalInterface } from './GameEngine/GraphicalInterface'
 import { StandardInputInterface } from './GameEngine/InputInterface'
-import { GameHost } from './GameHost'
-import { RaceGenerator } from './RacingGame'
+import { RaceGameDefinition } from './Games/Racing/RacingGameDefinition'
+import { Game, GameDefinition } from './Games/Game'
 
 $(() => {
 
@@ -21,11 +21,14 @@ $(() => {
 	let restartMessage = $('#restart-message');
 
 	let settingTemplate = Handlebars.compile($("#setting-template").html());
+	let settingCategoryTemplate = Handlebars.compile($("#setting-category-template").html());
 
 	class Setting {
 		private firstLineEditor: AceAjax.Editor;
 		private codeEditor: AceAjax.Editor;
 		private lastLineEditor: AceAjax.Editor;
+
+		public element: JQuery;
 
 		public setDefault() {
 			this.codeEditor.setValue(this.defaultValue, 1);
@@ -37,8 +40,7 @@ $(() => {
 			private firstLine: string,
 			private defaultValue: string,
 			private lastLine: string,
-			private mode: string,
-			containter: string
+			private mode: string
 		) {
 			let html = settingTemplate({
 				title: title,
@@ -91,7 +93,7 @@ $(() => {
 
 			element.find('.reset-button').click(e => this.setDefault());
 
-			$(`#${containter}`).append(element);
+			this.element = element;
 		}
 
 		getValue() {
@@ -105,163 +107,99 @@ $(() => {
 		}
 	}
 
-	let settings = {
+	let game: Game = null;
+	let gameDefinitions = [
+		new RaceGameDefinition()
+	];
+	let gameDefinition: GameDefinition;
+	let settings: {name: string, settings: {name: string, setting: Setting}[]}[] = [];
 
-		// Race settings
+	let selectGame = (index: number) => {
+		let settingsContainer = $('#settings-container');
 
-		raceParams: new Setting('Game parameters', '',
-			undefined,
-			`{
-	"sensorLength": 120,
-	"maxTrackWidth": 7,
-	"maxTrackHeight": 7,
-	"trackSegmentSize": 120,
-	"trackSegmentFill": 0.6,
-	"trackCornerCut": 0.5
-}`,
-			undefined,
-			'json', 'race-settings'
-		),
+		if (game)
+			game.stop();
 
-		stopCondition: new Setting('Stop condition of race', '',
-			`// (car: {lap: number, ai: boolean, alive: boolean}[], gameTime: number, active: boolean) => boolean
-function(cars, gameTime) {`,
-			`return cars.filter(c => c.ai && c.active && c.lap < 2).length === 0 || gameTime > 60000;`,
-			`}`,
-			'javascript', 'race-settings'
-		),
+		gameDefinition = gameDefinitions[0];
 
-		// NN settings
+		for (let categoryDefinition of gameDefinition.settings) {
+			let categoryElement = $(settingCategoryTemplate({ name: categoryDefinition.name }));
+			settingsContainer.append(categoryElement);
 
-		networkSize: new Setting('Network size', '',
-			undefined,
-			`{
-	"inputs": 8,
-	"hiddenLayers": [100]
-}`,
-			undefined,
-			'json', 'nn-settings'
-		),
+			let category = {
+				name: categoryDefinition.shortName,
+				settings: <{ name: string, setting: Setting }[]>[]
+			};
+			for (let settingDefinition of categoryDefinition.settings) {
+				let setting = new Setting(
+					settingDefinition.name,
+					settingDefinition.description,
+					settingDefinition.firstLine,
+					settingDefinition.defaultValue,
+					settingDefinition.lastLine,
+					settingDefinition.mode
+				);
+				settingsContainer.append(setting.element);
 
-		activationFunction: new Setting('Activation function', '',
-			`// (layer: number, node: number, layers: number[]) => (value: number) => number
-function(layer, node, layers) {`,
-			`if (layer === 0) // input mapping
-	return value => value;
-else if (layer < layers.length - 1) // hidden layers
-	return value => 1 / (1 + Math.pow(Math.E, -4 * value));
-else // output layer
-	return value => value;`,
-			`}`,
-			'javascript', 'nn-settings'
-		),
-
-		// GA settings
-
-		gaParams: new Setting('Genetics algorith paramas', '',
-			undefined,
-			`{
-	"populationSize": 20,
-	"mutationRate": 0.5,
-	"crossingRate": 0.5
-}`,
-			undefined,
-			'json', 'ga-settings'
-		),
-
-		mutation: new Setting('Mutation', '',
-			`// (specimen: number[]) => number[]
-function(specimen) {`,
-			`return specimen.map(gen => (Math.random() < 0.2) ? (gen + Math.random() * 0.2 - 0.1) : gen);`,
-			`}`,
-			'javascript', 'ga-settings'
-		),
-
-		crossing: new Setting('Crossing', '',
-			`// (first: number[], second: number[]) => number[]
-function(first, second) {`,
-			`return first.map((gen, index) => index % 2 === 0 ? gen : second[index]);`,
-			`}`,
-			'javascript', 'ga-settings'
-		),
-
-		selection: new Setting('Selection', '',
-			`// (fitnesses: number[]) => IterableIterator<number>
-function*(fitnesses) {`,
-			`while (true) {
-	// Ring selection
-	yield new Array(5).fill(0)
-		.map(v => Math.floor(Math.random() * fitnesses.length))
-		.map(v => ({ score: fitnesses[v], index: v }))
-		.reduce((p, c) => (p.score > c.score) ? p : c)
-		.index;
-}`,
-			`	throw "Selection generator drained";
-}`,
-			'javascript', 'ga-settings'
-		),
-
+				category.settings.push({
+					name: settingDefinition.shortName,
+					setting: setting
+				});
+			}
+			settings.push(category);
+		}
 	};
 
-	let gameParameter = {
+	let gameEnvironmant = {
 		skipGeneration: false,
 		skipFunction: (cars: { lap: number, ai: boolean, alive: boolean }[], gameTime: number) => {
 			return cars.filter(c => c.ai && c.alive && c.lap < 2).length == 0 || gameTime > 10000;
 		}
 	};
-	$('#skip-button').click(e => gameParameter.skipGeneration = true);
-
-	let canvas = $("#game-canvas");
+	$('#skip-button').click(e => gameEnvironmant.skipGeneration = true);
 
 	// ============== Game =================
 
-	let generationNumber = $('#generation-number');
+	let progress = $('#progress');
 
 	let graphicsInterface = new CanvasGraphicalInterface(<HTMLCanvasElement>$("#game-canvas")[0]);
     let inputInterface = new StandardInputInterface();
     graphicsInterface.defalutFont = 'Dosis';
 
-	let game: GameHost = null;
-
 	let start = () => {
 		if (game)
-			game.kill();
+			game.stop();
 
 		restartMessage.hide();
 
-		let _stopCondition = settings.stopCondition.getValue();
-		let stopCondition = (cars, time) => {
-			if (gameParameter.skipGeneration) {
-				gameParameter.skipGeneration = false;
-				return true;
-			}
-			else
-				return _stopCondition(cars, time);
+		let params = {};
+		for (let category of settings) {
+			let categorySettings = {};
+
+			for (let setting of category.settings)
+				categorySettings[setting.name] = setting.setting.getValue();
+
+			params[category.name] = categorySettings;
 		}
 
-		let _raceParams = settings.raceParams.getValue();
+		params['environment'] = {
+			skipCondition: () => {
+				if (gameEnvironmant.skipGeneration) {
+					gameEnvironmant.skipGeneration = false;
+					return true;
+				}
+			}
+		};
 
-		let _nnParams = settings.networkSize.getValue();
-		let _activationFunction = settings.activationFunction.getValue();
-
-		let _gaParams = settings.gaParams.getValue();
-		let _gaMutation = settings.mutation.getValue();
-		let _gaCrossing = settings.crossing.getValue();
-		let _gaSelection = settings.selection.getValue();
-
-		let generator = new RaceGenerator(_raceParams, stopCondition);
-
-		game = new GameHost(
-			_nnParams,
-			_gaParams, _gaMutation, _gaCrossing, _gaSelection,
-			_activationFunction,
-			graphicsInterface,
-			inputInterface,
-			generator,
-			g => generationNumber.text(g));
+		game = gameDefinition.instantiate(inputInterface, graphicsInterface, params);
+		game.on('progress', (g, a) => {
+			progress.html(a);
+		});
 		game.start();
 	}
 
 	$('#start-button').click(start);
+
+	selectGame(0);
 	start();
 })

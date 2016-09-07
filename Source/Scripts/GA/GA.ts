@@ -23,8 +23,7 @@
 		mutateFunction: (specimen: number[]) => number[],
 		crossFunction: (first: number[], second: number[]) => number[],
 		mutationRate: () => boolean,
-		crossRate: () => boolean,
-		private onNewGeneration: (generation: number) => void
+		crossRate: () => boolean
 	) {
 		this.population = initialPopulation.map(v => v.slice());
 		this.fitnessFunction = fitnessFunction;
@@ -39,8 +38,7 @@
 	public async run(): Promise<void> {
 		while (!this.stopCondition()) {
 
-			if (this.onNewGeneration)
-				this.onNewGeneration(this._generation);
+			this.emit('new generation', this._generation);
 
 			var oldPopulation = this.population;
 			var newPopulation: number[][] = [];
@@ -73,5 +71,18 @@
 
 			this._generation++;
 		}
+	}
+
+	private events: Map<string, ((game: GeneticAlgorithm, args: any) => any)[]> = new Map();
+	on(name: string, action: (game: GeneticAlgorithm, args: any) => any) {
+		if (this.events.has(name))
+			this.events.get(name).push(action);
+		else
+			this.events.set(name, [action]);
+	}
+	emit(name: string, args: any) {
+		if (this.events.has(name))
+			for (let event of this.events.get(name))
+				event(this, args);
 	}
 };

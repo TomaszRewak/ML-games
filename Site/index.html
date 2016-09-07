@@ -4,7 +4,8 @@
 <head>
 	<meta charset="utf-8" />
 	<title>ML games</title>
-	<meta name="description" content="Machine learning games. Use combination of genetic algorithms and neural networks to control the behaviour of in-game objects.">
+	<meta name="description" content="Machine learning games. Use combination of genetic algorithms and neural networks to control the behaviour of in-game objects. It's an online machine learning javascript sandbox working in your HTML5 web browser.">
+	<meta name="author" content="Tomasz Rewak">
 	<link href="https://fonts.googleapis.com/css?family=Dosis" rel="stylesheet">
 	<link href="./site.css" rel="stylesheet" />
 	<script src="https://code.jquery.com/jquery-3.1.0.min.js"></script>
@@ -16,14 +17,7 @@
 <body>
 	<div class="scroller-wrapper">
 		<div id="settings">
-			<div id="nn-settings">
-				<div class="settings-group-title">Neural network settings</div>
-			</div>
-			<div id="ga-settings">
-				<div class="settings-group-title">Genetic algorithm settings</div>
-			</div>
-			<div id="race-settings">
-				<div class="settings-group-title">Game settings</div>
+			<div id="settings-container">
 			</div>
 			<div class="separator"></div>
 			<div id="me">
@@ -45,7 +39,7 @@
 				Your browser does not support the HTML5 canvas tag.
 			</canvas>
 			<div id="quick-menu">
-				<div id="generation">Generation: <span id="generation-number">0</span></div>
+				<div id="progress"></div>
 				<div id="start-button" class="button">Restart</div>
 				<div id="restart-message">Restart to applly changes</div>
 				<div id="skip-button" class="button">End race</div>
@@ -54,6 +48,9 @@
 		</div>
 	</div>
 
+	<script id="setting-category-template" type="text/x-handlebars-template">
+		<div class="settings-group-title">{{name}}</div>
+	</script>
 	<script id="setting-template" type="text/x-handlebars-template">
 		<div class="setting">
 			<div class="setting-header">

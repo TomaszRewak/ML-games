@@ -72,7 +72,7 @@ body {
   border: 2px white solid;
   border-color: rgba(27, 28, 23, 0.6);
 }
-#generation {
+#progress {
   text-align: center;
 }
 .setting {

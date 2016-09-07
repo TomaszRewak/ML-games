@@ -16,10 +16,10 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 class GeneticAlgorithm {
-    constructor(initialPopulation, fitnessFunction, stopCondition, selectFunction, mutateFunction, crossFunction, mutationRate, crossRate, onNewGeneration) {
-        this.onNewGeneration = onNewGeneration;
+    constructor(initialPopulation, fitnessFunction, stopCondition, selectFunction, mutateFunction, crossFunction, mutationRate, crossRate) {
         this._bestSpecimen = { specimen: null, score: Number.MAX_VALUE };
         this._generation = 0;
+        this.events = new Map();
         this.population = initialPopulation.map(v => v.slice());
         this.fitnessFunction = fitnessFunction;
         this.stopCondition = stopCondition;
@@ -34,8 +34,7 @@ class GeneticAlgorithm {
     run() {
         return __awaiter(this, void 0, Promise, function* () {
             while (!this.stopCondition()) {
-                if (this.onNewGeneration)
-                    this.onNewGeneration(this._generation);
+                this.emit('new generation', this._generation);
                 var oldPopulation = this.population;
                 var newPopulation = [];
                 var popSize = oldPopulation.length;
@@ -58,6 +57,17 @@ class GeneticAlgorithm {
                 this._generation++;
             }
         });
+    }
+    on(name, action) {
+        if (this.events.has(name))
+            this.events.get(name).push(action);
+        else
+            this.events.set(name, [action]);
+    }
+    emit(name, args) {
+        if (this.events.has(name))
+            for (let event of this.events.get(name))
+                event(this, args);
     }
 }
 exports.GeneticAlgorithm = GeneticAlgorithm;
@@ -564,38 +574,42 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments)).next());
     });
 };
-const GA_1 = require('./GA/GA');
-const NN_1 = require('./NN/NN');
+const GA_1 = require('../GA/GA');
+const NN_1 = require('../NN/NN');
 const SoftLogic_1 = require('./SoftLogic');
-class GameHost {
-    constructor(nnParams, gaParams, mutate, cross, select, activarionFunction, graphics, input, gameGenerator, onNewGeneration) {
-        this.mutate = mutate;
-        this.cross = cross;
-        this.select = select;
-        this.stop = false;
-        this.inputs = nnParams.inputs;
-        this.hiddenLayers = nnParams.hiddenLayers;
-        this.outputs = gameGenerator.nnOutputs;
-        let layersDefinition = [this.inputs].concat(this.hiddenLayers.concat([this.outputs]));
-        this.activarionFunction = (l, n) => activarionFunction(l, n, layersDefinition);
+class GameDefinition {
+    constructor() {
+        this.settings = [];
+    }
+}
+exports.GameDefinition = GameDefinition;
+class GA_NN_Game {
+    constructor(input, graphics, gameGenerator, inputs, hiddenLayers, outputs, populationSize, mutationRate, crossingRate, selectFunction, mutateFunction, crossFunction, activationFunction) {
+        this.input = input;
+        this.graphics = graphics;
         this.gameGenerator = gameGenerator;
-        var initialPopulation = new Array(gaParams.populationSize)
+        this.inputs = inputs;
+        this.hiddenLayers = hiddenLayers;
+        this.outputs = outputs;
+        this.wasStopped = false;
+        this.events = new Map();
+        let layersDefinition = [this.inputs].concat(this.hiddenLayers.concat([this.outputs]));
+        this.activationFunction = (l, n) => activationFunction(l, n, layersDefinition);
+        var initialPopulation = new Array(populationSize)
             .fill([])
             .map(v => new Array(SoftLogic_1.SoftLogic.genotypeLength(this.inputs, this.hiddenLayers, this.outputs))
             .fill(0)
             .map(v => Math.random() * 1 - 0.5));
-        this.ga = new GA_1.GeneticAlgorithm(initialPopulation, specimens => this.race(specimens), () => false, this.select, this.mutate, this.cross, () => Math.random() < gaParams.mutationRate, () => Math.random() < gaParams.crossingRate, onNewGeneration);
-        this.input = input;
-        this.graphics = graphics;
+        this.ga = new GA_1.GeneticAlgorithm(initialPopulation, specimens => this.race(specimens), () => false, selectFunction, mutateFunction, crossFunction, () => Math.random() < mutationRate, () => Math.random() < crossingRate);
     }
     race(specimens) {
         return __awaiter(this, void 0, Promise, function* () {
-            if (this.stop)
+            if (this.wasStopped)
                 return null;
             var networks = specimens
                 .map(v => SoftLogic_1.SoftLogic.decodeGenotype(this.inputs, this.hiddenLayers, this.outputs, v))
-                .map(v => new NN_1.FullyConnectedNeuralNetwork(this.inputs, this.hiddenLayers, this.outputs, (l, n, i) => v[l - 1][n][i], this.activarionFunction));
-            this.game = this.gameGenerator.generate(networks, this.input, this.graphics);
+                .map(v => new NN_1.FullyConnectedNeuralNetwork(this.inputs, this.hiddenLayers, this.outputs, (l, n, i) => v[l - 1][n][i], this.activationFunction));
+            this.game = this.gameGenerator(this.input, this.graphics, networks);
             let result = yield this.game.run();
             this.game = null;
             return result;
@@ -606,79 +620,108 @@ class GameHost {
             yield this.ga.run();
         });
     }
-    kill() {
-        return __awaiter(this, void 0, void 0, function* () {
-            this.stop = true;
-            if (this.game)
-                this.game.stop();
+    stop() {
+        this.wasStopped = true;
+        if (this.game)
+            this.game.stop();
+    }
+    on(name, action) {
+        if (name == 'progress')
+            this.ga.on('new generation', (ga, generation) => action(this, `Generation: ${generation}`));
+    }
+}
+exports.GA_NN_Game = GA_NN_Game;
+class GA_NN_GameDefinition extends GameDefinition {
+    constructor() {
+        super();
+        this.settings.push({
+            name: 'Neural network settings',
+            shortName: 'nn',
+            settings: [
+                {
+                    name: 'Network size',
+                    shortName: 'size',
+                    defaultValue: `{
+	"inputs": 8,
+	"hiddenLayers": [100]
+}`,
+                    mode: 'json'
+                },
+                {
+                    name: 'Activation function',
+                    shortName: 'activationFunction',
+                    firstLine: `// (layer: number, node: number, layers: number[]) => (value: number) => number
+function(layer, node, layers) {`,
+                    defaultValue: `if (layer === 0) // input mapping
+	return value => value;
+else if (layer < layers.length - 1) // hidden layers
+	return value => 1 / (1 + Math.pow(Math.E, -4 * value));
+else // output layer
+	return value => value;`,
+                    lastLine: `}`,
+                    mode: 'javascript'
+                }
+            ]
+        });
+        this.settings.push({
+            name: 'Genetic algorithm settings',
+            shortName: 'ga',
+            settings: [
+                {
+                    name: 'Genetics algorith paramas',
+                    shortName: 'params',
+                    defaultValue: `{
+	"populationSize": 20,
+	"mutationRate": 0.5,
+	"crossingRate": 0.5
+}`,
+                    mode: 'json'
+                },
+                {
+                    name: 'Mutation',
+                    shortName: 'mutateFunction',
+                    firstLine: `// (specimen: number[]) => number[]
+function(specimen) {`,
+                    defaultValue: `return specimen.map(gen => (Math.random() < 0.2) ? (gen + Math.random() * 0.2 - 0.1) : gen);`,
+                    lastLine: `}`,
+                    mode: 'javascript'
+                },
+                {
+                    name: 'Crossing',
+                    shortName: 'crossFunction',
+                    firstLine: `// (first: number[], second: number[]) => number[]
+function(first, second) {`,
+                    defaultValue: `return first.map((gen, index) => index % 2 === 0 ? gen : second[index]);`,
+                    lastLine: `}`,
+                    mode: 'javascript'
+                },
+                {
+                    name: 'Selection',
+                    shortName: 'selectFunction',
+                    firstLine: `// (fitnesses: number[]) => IterableIterator<number>
+function*(fitnesses) {`,
+                    defaultValue: `while (true) {
+	// Ring selection
+	yield new Array(5).fill(0)
+		.map(v => Math.floor(Math.random() * fitnesses.length))
+		.map(v => ({ score: fitnesses[v], index: v }))
+		.reduce((p, c) => (p.score > c.score) ? p : c)
+		.index;
+}`,
+                    lastLine: `	throw "Selection generator drained";
+}`,
+                    mode: 'javascript'
+                }
+            ]
         });
     }
+    instantiate(input, graphics, params) {
+        return new GA_NN_Game(input, graphics, this.hostedGameGenerator(params), params['nn']['size']['inputs'], params['nn']['size']['hiddenLayers'], params['nn']['size']['outputs'], params['ga']['params']['populationSize'], params['ga']['params']['mutationRate'], params['ga']['params']['crossingRate'], params['ga']['selectFunction'], params['ga']['mutateFunction'], params['ga']['crossFunction'], params['nn']['activationFunction']);
+    }
 }
-exports.GameHost = GameHost;
+exports.GA_NN_GameDefinition = GA_NN_GameDefinition;
 
-},{"./GA/GA":1,"./NN/NN":7,"./SoftLogic":9}],7:[function(require,module,exports){
-"use strict";
-class NeuralNetworkNode {
-    constructor(inputNodes, weightsDistribution, activationFunction, connectionsDistribution) {
-        this.activationFunction = activationFunction;
-        this.connections = Array(inputNodes).fill(0).map((v, i) => i).filter(v => connectionsDistribution(v));
-        this.weights = Array(inputNodes).fill(0).map((v, i) => connectionsDistribution(i) ? weightsDistribution(i) : 0);
-    }
-    passValues(values) {
-        var totalInput = 0;
-        this.connections.forEach(connection => {
-            totalInput += values[connection] * this.weights[connection];
-        });
-        return this.activationFunction(totalInput);
-    }
-    getWeights() {
-        return this.weights.slice();
-    }
-}
-;
-class NeuralNetworkLayer {
-    constructor(layerSize, inputNodes, weightsDistribution, activationFunctionsDistribution, connectionsDistribution) {
-        this.nodes = Array(layerSize).fill(0).map((v, i) => new NeuralNetworkNode(inputNodes, (input) => weightsDistribution(i, input), activationFunctionsDistribution(i), (input) => connectionsDistribution(i, input)));
-    }
-    get size() { return this.nodes.length; }
-    passValues(values) {
-        return this.nodes.map(node => node.passValues(values));
-    }
-    getWeights() {
-        return this.nodes.map(n => n.getWeights());
-    }
-}
-;
-class NeuralNetwork {
-    constructor(inputs, hiddenLayers, outputs, weightsDistribution, activationFunctionsDistribution, connectionsDistribution) {
-        this._inputs = inputs;
-        this.inputMapping = Array(inputs).fill(0).map((v, i) => activationFunctionsDistribution(0, i));
-        var layersSizes = hiddenLayers.concat([outputs]);
-        this.layers = layersSizes.map((layerSize, layerNumber) => new NeuralNetworkLayer(layersSizes[layerNumber], (layerNumber == 0 ? inputs : layersSizes[layerNumber - 1]) + 1, (node, input) => weightsDistribution(layerNumber + 1, node, input), (node) => activationFunctionsDistribution(layerNumber + 1, node), (node, input) => connectionsDistribution(layerNumber + 1, node, input)));
-    }
-    get inputs() { return this._inputs; }
-    passValues(values) {
-        values = values.map((v, i) => this.inputMapping[i](v));
-        for (var i = 0; i < this.layers.length; i++) {
-            values.push(1);
-            values = this.layers[i].passValues(values);
-        }
-        return values;
-    }
-    getWeights() {
-        return this.layers.map(l => l.getWeights());
-    }
-}
-exports.NeuralNetwork = NeuralNetwork;
-;
-class FullyConnectedNeuralNetwork extends NeuralNetwork {
-    constructor(inputs, hiddenLayers, outputs, weightsDistribution, activationFunctionsDistribution) {
-        super(inputs, hiddenLayers, outputs, weightsDistribution, activationFunctionsDistribution, () => true);
-    }
-}
-exports.FullyConnectedNeuralNetwork = FullyConnectedNeuralNetwork;
-
-},{}],8:[function(require,module,exports){
+},{"../GA/GA":1,"../NN/NN":10,"./SoftLogic":9}],7:[function(require,module,exports){
 "use strict";
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -688,8 +731,8 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments)).next());
     });
 };
-const GameEngine_1 = require('./GameEngine/GameEngine');
-const GraphicsMath_1 = require('./GameEngine/GraphicsMath');
+const GameEngine_1 = require('../../GameEngine/GameEngine');
+const GraphicsMath_1 = require('../../GameEngine/GraphicsMath');
 class RaceBehaviour {
     constructor(aiCars, userCar, lapLength, score, countDown, stopCondition, onEnd) {
         this.aiCars = aiCars;
@@ -1240,19 +1283,59 @@ class Race {
     }
 }
 exports.Race = Race;
-class RaceGenerator {
-    constructor(gameParams, endCondition) {
-        this.gameParams = gameParams;
-        this.endCondition = endCondition;
-        this.generate = (networks, input, graphics) => {
-            return new Race(networks, input, graphics, this.gameParams, this.endCondition);
-        };
-        this.nnOutputs = 2;
+
+},{"../../GameEngine/GameEngine":2,"../../GameEngine/GraphicsMath":4}],8:[function(require,module,exports){
+"use strict";
+const Game_1 = require('../Game');
+const RacingGame_1 = require('./RacingGame');
+class RaceGameDefinition extends Game_1.GA_NN_GameDefinition {
+    constructor() {
+        super();
+        this.settings.push({
+            name: 'Game settings',
+            shortName: 'racing',
+            settings: [
+                {
+                    name: 'Game parameters',
+                    shortName: 'params',
+                    defaultValue: `{
+	"sensorLength": 120,
+	"maxTrackWidth": 7,
+	"maxTrackHeight": 7,
+	"trackSegmentSize": 120,
+	"trackSegmentFill": 0.6,
+	"trackCornerCut": 0.5
+}`,
+                    mode: 'json'
+                },
+                {
+                    name: 'Stop condition of race',
+                    shortName: 'stopCondition',
+                    firstLine: `// (car: {lap: number, ai: boolean, alive: boolean}[], gameTime: number, active: boolean) => boolean
+function(cars, gameTime) {`,
+                    defaultValue: `return cars.filter(c => c.ai && c.active && c.lap < 2).length === 0 || gameTime > 60000;`,
+                    lastLine: `}`,
+                    mode: 'javascript'
+                }
+            ]
+        });
+    }
+    hostedGameGenerator(params) {
+        let gameParams = params['racing']['params'];
+        let endCondition = params['racing']['stopCondition'];
+        let skipCondition = params['environment']['skipCondition'];
+        return (i, g, n) => new RacingGame_1.Race(n, i, g, gameParams, (c, t) => {
+            return skipCondition() || endCondition(c, t);
+        });
+    }
+    instantiate(input, graphics, params) {
+        params['nn']['size']['outputs'] = 2;
+        return super.instantiate(input, graphics, params);
     }
 }
-exports.RaceGenerator = RaceGenerator;
+exports.RaceGameDefinition = RaceGameDefinition;
 
-},{"./GameEngine/GameEngine":2,"./GameEngine/GraphicsMath":4}],9:[function(require,module,exports){
+},{"../Game":6,"./RacingGame":7}],9:[function(require,module,exports){
 "use strict";
 class SoftLogic {
     static encodeGenotype(weights) {
@@ -1284,6 +1367,68 @@ class SoftLogic {
 exports.SoftLogic = SoftLogic;
 
 },{}],10:[function(require,module,exports){
+"use strict";
+class NeuralNetworkNode {
+    constructor(inputNodes, weightsDistribution, activationFunction, connectionsDistribution) {
+        this.activationFunction = activationFunction;
+        this.connections = Array(inputNodes).fill(0).map((v, i) => i).filter(v => connectionsDistribution(v));
+        this.weights = Array(inputNodes).fill(0).map((v, i) => connectionsDistribution(i) ? weightsDistribution(i) : 0);
+    }
+    passValues(values) {
+        var totalInput = 0;
+        this.connections.forEach(connection => {
+            totalInput += values[connection] * this.weights[connection];
+        });
+        return this.activationFunction(totalInput);
+    }
+    getWeights() {
+        return this.weights.slice();
+    }
+}
+;
+class NeuralNetworkLayer {
+    constructor(layerSize, inputNodes, weightsDistribution, activationFunctionsDistribution, connectionsDistribution) {
+        this.nodes = Array(layerSize).fill(0).map((v, i) => new NeuralNetworkNode(inputNodes, (input) => weightsDistribution(i, input), activationFunctionsDistribution(i), (input) => connectionsDistribution(i, input)));
+    }
+    get size() { return this.nodes.length; }
+    passValues(values) {
+        return this.nodes.map(node => node.passValues(values));
+    }
+    getWeights() {
+        return this.nodes.map(n => n.getWeights());
+    }
+}
+;
+class NeuralNetwork {
+    constructor(inputs, hiddenLayers, outputs, weightsDistribution, activationFunctionsDistribution, connectionsDistribution) {
+        this._inputs = inputs;
+        this.inputMapping = Array(inputs).fill(0).map((v, i) => activationFunctionsDistribution(0, i));
+        var layersSizes = hiddenLayers.concat([outputs]);
+        this.layers = layersSizes.map((layerSize, layerNumber) => new NeuralNetworkLayer(layersSizes[layerNumber], (layerNumber == 0 ? inputs : layersSizes[layerNumber - 1]) + 1, (node, input) => weightsDistribution(layerNumber + 1, node, input), (node) => activationFunctionsDistribution(layerNumber + 1, node), (node, input) => connectionsDistribution(layerNumber + 1, node, input)));
+    }
+    get inputs() { return this._inputs; }
+    passValues(values) {
+        values = values.map((v, i) => this.inputMapping[i](v));
+        for (var i = 0; i < this.layers.length; i++) {
+            values.push(1);
+            values = this.layers[i].passValues(values);
+        }
+        return values;
+    }
+    getWeights() {
+        return this.layers.map(l => l.getWeights());
+    }
+}
+exports.NeuralNetwork = NeuralNetwork;
+;
+class FullyConnectedNeuralNetwork extends NeuralNetwork {
+    constructor(inputs, hiddenLayers, outputs, weightsDistribution, activationFunctionsDistribution) {
+        super(inputs, hiddenLayers, outputs, weightsDistribution, activationFunctionsDistribution, () => true);
+    }
+}
+exports.FullyConnectedNeuralNetwork = FullyConnectedNeuralNetwork;
+
+},{}],11:[function(require,module,exports){
 /// <reference path="Typed/jquery.d.ts" />
 /// <reference path="Typed/jqueryui.d.ts" />
 /// <reference path="Typed/ace.d.ts" />
@@ -1291,8 +1436,7 @@ exports.SoftLogic = SoftLogic;
 "use strict";
 const GraphicalInterface_1 = require('./GameEngine/GraphicalInterface');
 const InputInterface_1 = require('./GameEngine/InputInterface');
-const GameHost_1 = require('./GameHost');
-const RacingGame_1 = require('./RacingGame');
+const RacingGameDefinition_1 = require('./Games/Racing/RacingGameDefinition');
 $(() => {
     // ============== Scrolling =================
     let holder = $('#game-canvas-holder');
@@ -1301,8 +1445,9 @@ $(() => {
     // ============== Settings =================
     let restartMessage = $('#restart-message');
     let settingTemplate = Handlebars.compile($("#setting-template").html());
+    let settingCategoryTemplate = Handlebars.compile($("#setting-category-template").html());
     class Setting {
-        constructor(title, description, firstLine, defaultValue, lastLine, mode, containter) {
+        constructor(title, description, firstLine, defaultValue, lastLine, mode) {
             this.firstLine = firstLine;
             this.defaultValue = defaultValue;
             this.lastLine = lastLine;
@@ -1349,7 +1494,7 @@ $(() => {
             this.codeEditor = addEditor(element.find('.code-editor'), defaultValue, mode, false);
             this.lastLineEditor = addEditor(element.find('.setting-last-code-line'), lastLine, 'javascript', true);
             element.find('.reset-button').click(e => this.setDefault());
-            $(`#${containter}`).append(element);
+            this.element = element;
         }
         setDefault() {
             this.codeEditor.setValue(this.defaultValue, 1);
@@ -1364,91 +1509,75 @@ $(() => {
             }
         }
     }
-    let settings = {
-        // Race settings
-        raceParams: new Setting('Game parameters', '', undefined, `{
-	"sensorLength": 120,
-	"maxTrackWidth": 7,
-	"maxTrackHeight": 7,
-	"trackSegmentSize": 120,
-	"trackSegmentFill": 0.6,
-	"trackCornerCut": 0.5
-}`, undefined, 'json', 'race-settings'),
-        stopCondition: new Setting('Stop condition of race', '', `// (car: {lap: number, ai: boolean, alive: boolean}[], gameTime: number, active: boolean) => boolean
-function(cars, gameTime) {`, `return cars.filter(c => c.ai && c.active && c.lap < 2).length === 0 || gameTime > 60000;`, `}`, 'javascript', 'race-settings'),
-        // NN settings
-        networkSize: new Setting('Network size', '', undefined, `{
-	"inputs": 8,
-	"hiddenLayers": [100]
-}`, undefined, 'json', 'nn-settings'),
-        activationFunction: new Setting('Activation function', '', `// (layer: number, node: number, layers: number[]) => (value: number) => number
-function(layer, node, layers) {`, `if (layer === 0) // input mapping
-	return value => value;
-else if (layer < layers.length - 1) // hidden layers
-	return value => 1 / (1 + Math.pow(Math.E, -4 * value));
-else // output layer
-	return value => value;`, `}`, 'javascript', 'nn-settings'),
-        // GA settings
-        gaParams: new Setting('Genetics algorith paramas', '', undefined, `{
-	"populationSize": 20,
-	"mutationRate": 0.5,
-	"crossingRate": 0.5
-}`, undefined, 'json', 'ga-settings'),
-        mutation: new Setting('Mutation', '', `// (specimen: number[]) => number[]
-function(specimen) {`, `return specimen.map(gen => (Math.random() < 0.2) ? (gen + Math.random() * 0.2 - 0.1) : gen);`, `}`, 'javascript', 'ga-settings'),
-        crossing: new Setting('Crossing', '', `// (first: number[], second: number[]) => number[]
-function(first, second) {`, `return first.map((gen, index) => index % 2 === 0 ? gen : second[index]);`, `}`, 'javascript', 'ga-settings'),
-        selection: new Setting('Selection', '', `// (fitnesses: number[]) => IterableIterator<number>
-function*(fitnesses) {`, `while (true) {
-	// Ring selection
-	yield new Array(5).fill(0)
-		.map(v => Math.floor(Math.random() * fitnesses.length))
-		.map(v => ({ score: fitnesses[v], index: v }))
-		.reduce((p, c) => (p.score > c.score) ? p : c)
-		.index;
-}`, `	throw "Selection generator drained";
-}`, 'javascript', 'ga-settings'),
+    let game = null;
+    let gameDefinitions = [
+        new RacingGameDefinition_1.RaceGameDefinition()
+    ];
+    let gameDefinition;
+    let settings = [];
+    let selectGame = (index) => {
+        let settingsContainer = $('#settings-container');
+        if (game)
+            game.stop();
+        gameDefinition = gameDefinitions[0];
+        for (let categoryDefinition of gameDefinition.settings) {
+            let categoryElement = $(settingCategoryTemplate({ name: categoryDefinition.name }));
+            settingsContainer.append(categoryElement);
+            let category = {
+                name: categoryDefinition.shortName,
+                settings: []
+            };
+            for (let settingDefinition of categoryDefinition.settings) {
+                let setting = new Setting(settingDefinition.name, settingDefinition.description, settingDefinition.firstLine, settingDefinition.defaultValue, settingDefinition.lastLine, settingDefinition.mode);
+                settingsContainer.append(setting.element);
+                category.settings.push({
+                    name: settingDefinition.shortName,
+                    setting: setting
+                });
+            }
+            settings.push(category);
+        }
     };
-    let gameParameter = {
+    let gameEnvironmant = {
         skipGeneration: false,
         skipFunction: (cars, gameTime) => {
             return cars.filter(c => c.ai && c.alive && c.lap < 2).length == 0 || gameTime > 10000;
         }
     };
-    $('#skip-button').click(e => gameParameter.skipGeneration = true);
-    let canvas = $("#game-canvas");
+    $('#skip-button').click(e => gameEnvironmant.skipGeneration = true);
     // ============== Game =================
-    let generationNumber = $('#generation-number');
+    let progress = $('#progress');
     let graphicsInterface = new GraphicalInterface_1.CanvasGraphicalInterface($("#game-canvas")[0]);
     let inputInterface = new InputInterface_1.StandardInputInterface();
     graphicsInterface.defalutFont = 'Dosis';
-    let game = null;
     let start = () => {
         if (game)
-            game.kill();
+            game.stop();
         restartMessage.hide();
-        let _stopCondition = settings.stopCondition.getValue();
-        let stopCondition = (cars, time) => {
-            if (gameParameter.skipGeneration) {
-                gameParameter.skipGeneration = false;
-                return true;
+        let params = {};
+        for (let category of settings) {
+            let categorySettings = {};
+            for (let setting of category.settings)
+                categorySettings[setting.name] = setting.setting.getValue();
+            params[category.name] = categorySettings;
+        }
+        params['environment'] = {
+            skipCondition: () => {
+                if (gameEnvironmant.skipGeneration) {
+                    gameEnvironmant.skipGeneration = false;
+                    return true;
+                }
             }
-            else
-                return _stopCondition(cars, time);
         };
-        let _raceParams = settings.raceParams.getValue();
-        let _nnParams = settings.networkSize.getValue();
-        let _activationFunction = settings.activationFunction.getValue();
-        let _gaParams = settings.gaParams.getValue();
-        let _gaMutation = settings.mutation.getValue();
-        let _gaCrossing = settings.crossing.getValue();
-        let _gaSelection = settings.selection.getValue();
-        let generator = new RacingGame_1.RaceGenerator(_raceParams, stopCondition);
-        game = new GameHost_1.GameHost(_nnParams, _gaParams, _gaMutation, _gaCrossing, _gaSelection, _activationFunction, graphicsInterface, inputInterface, generator, g => generationNumber.text(g));
+        game = gameDefinition.instantiate(inputInterface, graphicsInterface, params);
+        game.on('progress', (g, a) => {
+            progress.html(a);
+        });
         game.start();
     };
     $('#start-button').click(start);
+    selectGame(0);
     start();
 });
 
-},{"./GameEngine/GraphicalInterface":3,"./GameEngine/InputInterface":5,"./GameHost":6,"./RacingGame":8}]},{},[10])
+},{"./GameEngine/GraphicalInterface":3,"./GameEngine/InputInterface":5,"./Games/Racing/RacingGameDefinition":8}]},{},[11])
